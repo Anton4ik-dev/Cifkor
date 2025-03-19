@@ -12,20 +12,38 @@ namespace ServerRequestSystem
 {
     public class ServerRequestModel
     {
-        private const int AMPUNT_OF_BREEDS = 10;
+        private const int AMOUNT_OF_BREEDS = 10;
 
         private Queue<Func<CancellationToken, UniTask>> _requestQueue = new Queue<Func<CancellationToken, UniTask>>();
         private bool _isProcessing = false;
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private CancellationTokenSource _currentRequestTokenSource;
 
-        private async UniTask ProcessQueue(CancellationToken ct)
+        private async UniTask ProcessQueue()
         {
             _isProcessing = true;
 
-            while (_requestQueue.Count > 0 && !ct.IsCancellationRequested)
+            while (_requestQueue.Count > 0)
             {
+                if (_currentRequestTokenSource != null && !_currentRequestTokenSource.IsCancellationRequested)
+                {
+                    _currentRequestTokenSource.Cancel();
+                }
+
+                _currentRequestTokenSource = new CancellationTokenSource();
                 Func<CancellationToken, UniTask> request = _requestQueue.Dequeue();
-                await request(ct);
+
+                try
+                {
+                    await request(_currentRequestTokenSource.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Debug.Log("Request was canceled");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Request failed: {ex?.GetType().Name} - {ex?.Message ?? "No message"}");
+                }
             }
 
             _isProcessing = false;
@@ -66,16 +84,19 @@ namespace ServerRequestSystem
             });
 
             if (!_isProcessing)
-                await ProcessQueue(_cancellationTokenSource.Token);
+                await ProcessQueue();
 
             await taskCompletionSource.Task;
         }
 
         public void CancelRequests()
         {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource = new CancellationTokenSource();
-            _requestQueue.Clear();
+            if (_currentRequestTokenSource != null)
+            {
+                _currentRequestTokenSource.Cancel();
+                _currentRequestTokenSource = null;
+            }
+            _requestQueue.Clear(); 
         }
 
         public async UniTask<WeatherData> GetWeather(string url, CancellationToken ct)
@@ -117,7 +138,7 @@ namespace ServerRequestSystem
             string jsonResponse = webRequest.downloadHandler.text;
             BreedsResponse breedsResponse = JsonUtility.FromJson<BreedsResponse>(jsonResponse);
 
-            BreedData[] breedData = new BreedData[AMPUNT_OF_BREEDS];
+            BreedData[] breedData = new BreedData[AMOUNT_OF_BREEDS];
 
             for (int i = 0; i < breedData.Length; i++)
             {

@@ -17,7 +17,7 @@ namespace ServerRequestSystem
         private BreedPopUpView _breedPopUpView;
         private ServerRequestModel _model;
         private bool _isWeather = false;
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private CancellationTokenSource _weatherTimerTokenSource;
 
         [Inject]
         public ServerRequestController(ServerRequestView view, ServerRequestModel model, BreedPopUpView breedPopUpView)
@@ -35,29 +35,31 @@ namespace ServerRequestSystem
 
         private async UniTask StartWeatherRequestTimer()
         {
-            while (!_cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                await SendRequest();
+            _weatherTimerTokenSource = new CancellationTokenSource();
+            CancellationToken ct = _weatherTimerTokenSource.Token;
 
-                await UniTask.Delay(5000, cancellationToken: _cancellationTokenSource.Token);
+            while (!ct.IsCancellationRequested)
+            {
+                await SendRequest(ct);
+
+                await UniTask.Delay(5000, cancellationToken: ct);
             }
         }
 
         private void StopRequests()
         {
             _model.CancelRequests();
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource = new CancellationTokenSource();
+            _weatherTimerTokenSource?.Cancel();
         }
 
-        private async UniTask SendRequest()
+        private async UniTask SendRequest(CancellationToken ct)
         {
             try
             {
                 if (_isWeather)
-                    await SendWeatherRequest();
+                    await SendWeatherRequest(ct);
                 else
-                    await SendBreedsRequest();
+                    await SendBreedsRequest(ct);
             }
             catch (OperationCanceledException)
             {
@@ -101,7 +103,8 @@ namespace ServerRequestSystem
                 breedView.ShowHideLoading(false);
             }
         }
-        private async UniTask SendWeatherRequest()
+
+        private async UniTask SendWeatherRequest(CancellationToken ct)
         {
             WeatherData weatherData = new WeatherData();
             Sprite icon = null;
@@ -113,13 +116,13 @@ namespace ServerRequestSystem
 
             await _model.AddRequest(async (ct) =>
             {
-                icon = await _model.GetIcon(weatherData.icon, _cancellationTokenSource.Token);
+                icon = await _model.GetIcon(weatherData.icon, ct);
             });
 
             _view.UpdateWeather(weatherData.name, weatherData.temperature, weatherData.temperatureUnit, icon);
         }
 
-        private async UniTask SendBreedsRequest()
+        private async UniTask SendBreedsRequest(CancellationToken ct)
         {
             BreedData[] breeds = null;
             _view.ShowHideLoading(true);
@@ -147,7 +150,9 @@ namespace ServerRequestSystem
                 StartWeatherRequestTimer().Forget();
             }
             else
-                SendRequest().Forget();
+            {
+                SendRequest(default).Forget();
+            }
         }
 
         public void Destroy()
