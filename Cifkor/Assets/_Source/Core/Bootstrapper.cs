@@ -1,4 +1,3 @@
-using ServerRequestSystem;
 using UnityEngine;
 using Zenject;
 
@@ -6,17 +5,17 @@ namespace Core
 {
     public class Bootstrapper : MonoBehaviour
     {
-        private ServerRequestController _serverRequestController;
+        private Game _game;
 
         [Inject]
-        private void Construct(ServerRequestController serverRequestController)
+        private void Construct(Game game)
         {
-            _serverRequestController = serverRequestController;
+            _game = game;
         }
 
         private void Awake()
         {
-            _serverRequestController.SetWeatherTabActive(true);
+            _game.StartGame();
         }
     }
 }
